@@ -1,0 +1,13 @@
+{
+  "signal_dimension": 128,
+  "measurements": 52,
+  "true_nonzero_entries": 5,
+  "correct_support_entries": 5,
+  "l2_recovery_error": 0.004597826,
+  "relative_l2_error": 0.000558802,
+  "relative_l2_error_percent": 0.05588,
+  "max_absolute_error": 0.0025,
+  "outer_iterations_reported": 20,
+  "sample_runtime_seconds_reported": 0.257777,
+  "runtime_note": "Runtime is from the original submitted MATLAB run and is machine-dependent."
+}
