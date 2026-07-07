@@ -4,82 +4,96 @@
 ![Optimization](https://img.shields.io/badge/Optimization-Linear%20Programming-blue?style=for-the-badge)
 ![Numerical Methods](https://img.shields.io/badge/Numerical%20Methods-Newton%20Iteration-6f42c1?style=for-the-badge)
 
-A MATLAB implementation of an **Interior Point Method** for recovering a sparse vector from an underdetermined linear system through **L1-norm minimization**.
+A MATLAB implementation of an **Interior Point Method** for recovering a sparse vector from an underdetermined linear system using **L1-norm minimization**.
 
-This repository is a portfolio-focused refactoring of a university numerical optimization project. It emphasizes the solver implementation, numerical reasoning, reproducible results, and engineering decisions behind the method.
+The project reformulates sparse recovery as a linear programming problem, solves it with a custom Newton-style Interior Point iteration, and evaluates the recovered solution using support and numerical error metrics.
 
 <p align="center">
-  <img src="results/recovery_comparison.png" alt="True and recovered sparse vectors" width="900">
+  <img src="results/recovery_comparison.png" alt="Comparison of the true and recovered sparse vectors" width="850">
 </p>
 
-## Problem
+---
 
-Given a measurement matrix \(A_0 \in \mathbb{R}^{52 \times 128}\) and observations
+## Overview
 
-\[
-b = A_0 x,
-\]
+Suppose a sparse vector \(x \in \mathbb{R}^{128}\) cannot be observed directly. Instead, only 52 linear measurements are available:
 
-recover an unknown **5-sparse** vector \(x \in \mathbb{R}^{128}\).
+$$
+b = A_0x
+$$
 
-The sparse recovery problem is posed as
+where
 
-\[
+$$
+A_0 \in \mathbb{R}^{52 \times 128}.
+$$
+
+The goal is to recover the original **5-sparse vector** from these measurements.
+
+This is formulated as the constrained optimization problem
+
+$$
 \min_x \|x\|_1
 \quad \text{subject to} \quad
-A_0x=b.
-\]
+A_0x = b.
+$$
 
-Because the original vector may contain positive and negative values, write
+Because \(x\) may contain both positive and negative entries, it is decomposed as
 
-\[
+$$
 x = x^+ - x^-,
 \qquad
-x^+,x^- \ge 0.
-\]
+x^+, x^- \ge 0.
+$$
 
 Define
 
-\[
+$$
 z =
 \begin{bmatrix}
 x^+ \\
 x^-
-\end{bmatrix},
-\qquad
+\end{bmatrix}
+$$
+
+and
+
+$$
 A =
 \begin{bmatrix}
 A_0 & -A_0
 \end{bmatrix}.
-\]
+$$
 
-The optimization problem becomes the linear program
+The problem can then be expressed as the linear program
 
-\[
-\min_z \mathbf{1}^Tz
+$$
+\min_z \mathbf{1}^T z
 \quad \text{subject to} \quad
-Az=b.
-\]
+Az = b.
+$$
 
-The custom solver then applies an Interior Point iteration with Newton-style updates. The core optimization routine does **not** call MATLAB's `linprog`.
+The optimization is solved with a custom Interior Point iteration. The core solver does **not** call MATLAB's `linprog`.
+
+---
 
 ## Results
 
-The reported run recovered the correct five nonzero locations and closely matched their values.
+The reported run successfully recovered all five nonzero locations and closely approximated their original values.
 
-| Metric | Reported result |
+| Metric | Result |
 |---|---:|
 | Signal dimension | 128 |
 | Measurements | 52 |
 | True nonzero entries | 5 |
-| Correct support entries | **5 / 5** |
+| Correct support recovery | **5 / 5** |
 | L2 recovery error | **0.004598** |
 | Relative L2 error | **0.055880%** |
 | Maximum absolute error | **0.002500** |
 | Outer iterations | 20 |
 | Sample runtime | 0.257777 s |
 
-> Runtime is from the original MATLAB run and is machine-dependent. Error metrics above are computed from the thresholded recovered vector shown in that run.
+> **Note:** Runtime is taken from the original MATLAB run and is machine-dependent. Error metrics are computed from the thresholded recovered vector reported by that run.
 
 ### Recovered nonzero entries
 
@@ -92,134 +106,309 @@ The reported run recovered the correct five nonzero locations and closely matche
 | 109 | 3.2000 | 3.1980 | 0.0020 |
 
 <p align="center">
-  <img src="results/absolute_error.png" alt="Absolute error at recovered nonzero indices" width="760">
+  <img src="results/absolute_error.png" alt="Absolute recovery error at the nonzero indices" width="700">
 </p>
 
-## Repository structure
+---
+
+## How the Solver Works
+
+The solver uses an outer barrier loop and an inner Newton iteration.
+
+### 1. Update the barrier parameter
+
+After the first outer iteration,
+
+$$
+\mu \leftarrow \rho\mu.
+$$
+
+The implementation uses
+
+$$
+\mu_0 = 10,
+\qquad
+\rho = 0.6.
+$$
+
+### 2. Construct the adjusted diagonal matrix
+
+At each Newton iteration,
+
+$$
+X = \operatorname{diag}(z) + \epsilon I
+$$
+
+with
+
+$$
+\epsilon = 0.001.
+$$
+
+The diagonal adjustment provides a numerical safeguard when forming the linear system used by the method.
+
+### 3. Solve for the multiplier vector
+
+The method solves
+
+$$
+(AX^2A^T)\lambda
+=
+AX^2c - \mu AXe.
+$$
+
+In MATLAB, the linear system is solved with the backslash operator rather than by explicitly computing a matrix inverse.
+
+### 4. Compute the Newton direction
+
+The update direction is
+
+$$
+p =
+Xe +
+\frac{1}{\mu}
+X^2(A^T\lambda - c).
+$$
+
+### 5. Update the estimate
+
+Using a step size of
+
+$$
+\alpha = 1,
+$$
+
+the estimate is updated by
+
+$$
+z \leftarrow z + p.
+$$
+
+This corresponds to a pure Newton iteration.
+
+### 6. Check convergence
+
+The inner loop stops when
+
+$$
+\|p\|_2 < 10^{-9}.
+$$
+
+For a more detailed explanation, see [`docs/algorithm.md`](docs/algorithm.md).
+
+---
+
+## Repository Structure
 
 ```text
 interior-point-sparse-recovery/
 ├── README.md
 ├── run_demo.m
+│
 ├── src/
 │   ├── build_sparse_recovery_problem.m
 │   ├── interior_point_solver.m
 │   └── recovery_metrics.m
+│
 ├── results/
 │   ├── recovery_comparison.png
 │   ├── absolute_error.png
 │   ├── recovered_nonzero_entries.csv
 │   ├── reported_metrics.json
 │   └── sample_output.txt
+│
 ├── docs/
 │   ├── algorithm.md
 │   ├── design-decisions.md
 │   └── provenance.md
+│
 ├── NOTICE.md
 └── .gitignore
 ```
 
-## How the solver works
+---
 
-For each outer iteration, the barrier parameter is reduced:
+## Implementation
 
-\[
-\mu \leftarrow \rho\mu.
-\]
+The repository separates the numerical method into independent components.
 
-For each inner Newton iteration:
+### `run_demo.m`
 
-1. Construct the adjusted diagonal matrix
+Main entry point for the experiment. It:
 
-   \[
-   X = \operatorname{diag}(z) + \epsilon I.
-   \]
+- constructs the sparse recovery problem,
+- configures the solver,
+- runs the Interior Point Method,
+- reconstructs the signed vector,
+- computes evaluation metrics,
+- exports updated results and plots.
 
-2. Solve for \(\lambda\):
+### `src/build_sparse_recovery_problem.m`
 
-   \[
-   (AX^2A^T)\lambda
-   =
-   AX^2c - \mu AXe.
-   \]
+Builds the deterministic problem instance, including:
 
-3. Compute the Newton direction:
+- the \(52 \times 128\) measurement matrix,
+- the 5-sparse ground-truth vector,
+- the measurement vector \(b\),
+- the expanded LP matrix,
+- a feasible initial estimate.
 
-   \[
-   p
-   =
-   Xe + \frac{1}{\mu}X^2(A^T\lambda-c).
-   \]
+### `src/interior_point_solver.m`
 
-4. Update the estimate using pure Newton iteration:
+Implements the custom Interior Point iteration, including:
 
-   \[
-   z \leftarrow z + p.
-   \]
+- barrier parameter reduction,
+- matrix construction,
+- multiplier-system solution,
+- Newton direction computation,
+- iterative updates,
+- convergence checks,
+- iteration diagnostics.
 
-5. Stop the inner iteration when
+### `src/recovery_metrics.m`
 
-   \[
-   \|p\|_2 < 10^{-9}.
-   \]
+Computes:
 
-See [`docs/algorithm.md`](docs/algorithm.md) for more detail.
+- L2 recovery error,
+- relative L2 error,
+- maximum absolute error,
+- support size,
+- correct support recovery.
 
-## Run locally
+---
+
+## Run Locally
 
 ### Requirements
 
 - MATLAB
 - No Optimization Toolbox is required for the custom solver
 
-### Run
+### Clone the repository
 
-Clone the repository and execute:
+```bash
+git clone https://github.com/carlotarzua/interior-point-sparse-recovery.git
+cd interior-point-sparse-recovery
+```
+
+### Run the demo
+
+From MATLAB, execute:
 
 ```matlab
 run_demo
 ```
 
-The script:
+The script will:
 
-- builds the deterministic sparse recovery problem,
-- runs the custom Interior Point solver,
-- reconstructs the signed 128-dimensional vector,
-- computes recovery metrics,
-- prints a compact result table,
-- saves fresh plots and result files under `results/`.
+1. build the deterministic sparse recovery problem,
+2. execute the custom Interior Point solver,
+3. reconstruct the 128-dimensional signed vector,
+4. calculate recovery metrics,
+5. display the recovered nonzero entries,
+6. save updated results under `results/`.
 
-## Engineering decisions
+Freshly generated outputs use filenames such as:
 
-This portfolio version intentionally improves the original single-file submission:
+```text
+latest_recovery_comparison.png
+latest_absolute_error.png
+latest_nonzero_entries.csv
+latest_metrics.txt
+```
 
-- **Modular solver design:** problem construction, optimization, and metrics are separated.
-- **No explicit matrix inverse in the refactored setup:** linear systems use MATLAB's backslash operator.
-- **Reproducible problem instance:** the sparse signal and measurement construction are deterministic.
-- **Numerical safeguards:** the diagonal matrix uses \(\epsilon I\) regularization as specified by the method.
-- **Transparent evaluation:** support recovery and numerical error are reported separately.
-- **No black-box LP solver:** the Interior Point iteration is implemented directly.
+---
 
-## Technical skills demonstrated
+## Engineering Decisions
 
-- MATLAB
-- Linear programming
-- Convex optimization
-- Numerical linear algebra
-- Newton methods
-- Sparse signal recovery
-- Algorithm implementation from mathematical pseudocode
-- Numerical error analysis
-- Technical documentation
+### Modular solver design
 
-## Portfolio context
+The original single-file implementation was reorganized so that problem construction, optimization, evaluation, and experiment execution are separate.
 
-This project demonstrates the intersection of **mathematics and computer science**: reformulating a sparse recovery objective as a linear program, implementing a numerical optimization method, and evaluating the solution quantitatively.
+This improves readability and makes the numerical method easier to inspect independently.
 
-For software engineering, machine learning, data science, quantitative, and applied mathematics roles, the most relevant aspects are the direct algorithm implementation, matrix computation, numerical stability considerations, and measurable validation of results.
+### Linear systems instead of explicit matrix inverses
 
-## Attribution and provenance
+The refactored initialization uses MATLAB's backslash operator:
 
-This repository is based on a university MAT 387/487 course project. The original course materials supplied the project statement, deterministic problem setup conventions, and algorithm specification. The Interior Point iteration was implemented for the project and then reorganized here into a recruiter-facing portfolio repository.
+```matlab
+y = gram_matrix \ b;
+x_initial = A0' * y;
+```
 
-See [`docs/provenance.md`](docs/provenance.md) and [`NOTICE.md`](NOTICE.md) for a precise statement of scope and attribution.
+rather than explicitly computing
+
+```matlab
+inv(gram_matrix)
+```
+
+when the actual objective is to solve a linear system.
+
+### Custom optimization routine
+
+The core algorithm directly implements the Interior Point iteration instead of delegating the optimization problem to `linprog`.
+
+### Reproducible problem instance
+
+The measurement matrix construction, sparse-vector locations, and sparse-vector values are deterministic.
+
+### Explicit numerical evaluation
+
+Support recovery and value accuracy are measured separately rather than relying only on visual inspection of the output.
+
+### Numerical regularization
+
+The solver uses
+
+$$
+X = \operatorname{diag}(z) + \epsilon I
+$$
+
+with \(\epsilon = 0.001\), following the specified method and reducing numerical degeneracy in the associated matrix system.
+
+---
+
+## Technical Concepts
+
+This project applies concepts from:
+
+- linear programming,
+- convex optimization,
+- numerical linear algebra,
+- Newton methods,
+- sparse signal recovery,
+- constrained optimization,
+- numerical error analysis,
+- MATLAB scientific computing.
+
+---
+
+## Project Background and Attribution
+
+This repository is based on a university **MAT 387/487** numerical optimization project.
+
+The course materials provided the project problem, deterministic setup conventions, algorithm specification, and MATLAB scaffold surrounding the student implementation section.
+
+The repository presents the Interior Point implementation together with subsequent work to:
+
+- reorganize the code into modular components,
+- improve numerical-programming practices,
+- add quantitative recovery metrics,
+- generate result visualizations,
+- document the algorithm and engineering decisions.
+
+For additional details, see:
+
+- [`docs/provenance.md`](docs/provenance.md)
+- [`NOTICE.md`](NOTICE.md)
+
+---
+
+## Author
+
+**Carlota Arzúa Alonso**
+
+Mathematics and Computer Science  
+DePaul University
+
+[GitHub Profile](https://github.com/carlotarzua)
