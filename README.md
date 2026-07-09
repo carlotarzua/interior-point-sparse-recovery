@@ -6,6 +6,8 @@
 
 A MATLAB implementation of an **Interior Point Method** for recovering a sparse vector from an underdetermined linear system using **L1-norm minimization**.
 
+📄 [Download the technical report](report/fair_rent_division_report.pdf)
+
 The project reformulates sparse recovery as a linear programming problem, solves it with a custom Newton-style Interior Point iteration, and evaluates the recovered solution using support-recovery and numerical-error metrics.
 
 <p align="center">
