@@ -1,0 +1,692 @@
+\documentclass[11pt]{article}
+
+% -------------------------------------------------
+% Packages
+% -------------------------------------------------
+\usepackage[letterpaper,margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{titlesec}
+
+% -------------------------------------------------
+% Colors and links
+% -------------------------------------------------
+\definecolor{navy}{HTML}{17324D}
+\definecolor{accent}{HTML}{2A6F97}
+\definecolor{lightgray}{HTML}{F4F6F8}
+\definecolor{codegreen}{HTML}{2E7D32}
+\definecolor{codegray}{HTML}{5F6368}
+\definecolor{codepurple}{HTML}{7B1FA2}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=navy,
+  citecolor=accent,
+  urlcolor=accent,
+  pdftitle={Interior Point Method for Sparse Recovery},
+  pdfauthor={Carlota Arzúa Alonso}
+}
+
+% -------------------------------------------------
+% Heading style
+% -------------------------------------------------
+\titleformat{\section}
+  {\Large\bfseries\color{navy}}
+  {\thesection}{0.7em}{}
+\titleformat{\subsection}
+  {\large\bfseries\color{accent}}
+  {\thesubsection}{0.7em}{}
+
+% -------------------------------------------------
+% Header / footer
+% -------------------------------------------------
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Interior Point Method for Sparse Recovery}
+\rhead{Carlota Arzúa Alonso}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% -------------------------------------------------
+% MATLAB listings
+% -------------------------------------------------
+\lstdefinestyle{matlabstyle}{
+  language=Matlab,
+  backgroundcolor=\color{lightgray},
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{navy}\bfseries,
+  commentstyle=\color{codegreen},
+  stringstyle=\color{codepurple},
+  numberstyle=\tiny\color{codegray},
+  numbers=left,
+  numbersep=8pt,
+  frame=single,
+  rulecolor=\color{gray!35},
+  breaklines=true,
+  showstringspaces=false,
+  tabsize=4,
+  captionpos=b
+}
+\lstset{style=matlabstyle}
+
+% -------------------------------------------------
+% Convenience commands
+% -------------------------------------------------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+\newcommand{\diag}{\operatorname{diag}}
+
+\begin{document}
+
+% -------------------------------------------------
+% Title page
+% -------------------------------------------------
+\begin{titlepage}
+  \centering
+  \vspace*{1.2in}
+  {\Huge\bfseries\color{navy} Interior Point Method for Sparse Recovery\par}
+  \vspace{0.35in}
+  {\Large A MATLAB Implementation of $\ell_1$-Minimization via Linear Programming\par}
+  \vspace{0.8in}
+
+  \rule{0.78\textwidth}{0.8pt}\par
+  \vspace{0.45in}
+  {\Large\bfseries Carlota Arzúa Alonso\par}
+  \vspace{0.15in}
+  {\large Mathematics and Computer Science\par}
+  {\large DePaul University\par}
+  \vspace{0.45in}
+  {\large Technical Project Report\par}
+  \vfill
+  {\large July 2026\par}
+\end{titlepage}
+
+\pagenumbering{roman}
+
+% -------------------------------------------------
+% Abstract
+% -------------------------------------------------
+\begin{abstract}
+This report presents a MATLAB implementation of an Interior Point Method for recovering a sparse vector from an underdetermined linear system. The problem begins with a measurement matrix $A_0 \in \R^{52\times 128}$ and a measurement vector $b=A_0x$, where the unknown vector $x\in\R^{128}$ contains only five nonzero entries. Recovery is formulated as the convex optimization problem $\min_x \norm{x}_1$ subject to $A_0x=b$. By decomposing the signed vector into nonnegative positive and negative components, the problem is converted into a linear program with 256 decision variables. A custom Newton-style Interior Point iteration is then implemented directly in MATLAB without calling the built-in \texttt{linprog} solver. In the reported run, the method recovered all five nonzero locations correctly, achieved an $\ell_2$ recovery error of approximately $0.004598$, a relative $\ell_2$ error of $0.055880\%$, and a maximum absolute error of $0.002500$. The project demonstrates the connection between convex optimization, sparse recovery, numerical linear algebra, and scientific software design.
+\end{abstract}
+
+\tableofcontents
+\clearpage
+\pagenumbering{arabic}
+
+% -------------------------------------------------
+\section{Introduction}
+% -------------------------------------------------
+Sparse recovery asks whether a high-dimensional vector can be reconstructed from a smaller number of linear measurements when most of its entries are zero. This setting appears naturally in compressed sensing, inverse problems, signal reconstruction, and other applications where the underlying object is structured but the available observations are limited.
+
+The project considered here uses a matrix
+\[
+A_0\in\R^{52\times 128}
+\]
+and an unknown vector
+\[
+x\in\R^{128}.
+\]
+Only the measurement vector
+\[
+b=A_0x
+\]
+is observed. Because there are fewer equations than unknowns, the system is underdetermined: many vectors may satisfy the equality constraint. The additional assumption is that the true vector is \emph{5-sparse}, meaning exactly five of its 128 entries are nonzero.
+
+The central idea is to recover the sparse solution by minimizing the $\ell_1$ norm subject to the measurement constraint. The resulting convex problem can be reformulated as a linear program and solved with an Interior Point Method. Interior point algorithms form a major class of methods for linear programming and are studied as alternatives to simplex-based approaches; the course project was based on the treatment by Robere~\cite{robere2012}.
+
+The goals of this project are:
+\begin{enumerate}[leftmargin=1.5em]
+  \item formulate sparse recovery as an $\ell_1$-minimization problem;
+  \item convert the signed-variable problem into a standard nonnegative linear program;
+  \item implement the specified Interior Point iteration directly in MATLAB;
+  \item evaluate both support recovery and numerical accuracy; and
+  \item organize the implementation using reproducible numerical-computing practices.
+\end{enumerate}
+
+% -------------------------------------------------
+\section{Problem Formulation}
+% -------------------------------------------------
+\subsection{Underdetermined measurement model}
+
+Let
+\[
+A_0\in\R^{52\times 128},\qquad x\in\R^{128},\qquad b\in\R^{52},
+\]
+with
+\[
+A_0x=b.
+\]
+Since $52<128$, the equality constraint alone does not determine a unique vector $x$. The recovery objective therefore uses sparsity as additional structure.
+
+The true vector contains five nonzero values at indices 30, 43, 55, 107, and 109. The values are summarized in Table~\ref{tab:true-support}.
+
+\begin{table}[H]
+\centering
+\caption{Nonzero entries of the true sparse vector.}
+\label{tab:true-support}
+\begin{tabular}{cr}
+\toprule
+\textbf{Index} & \textbf{True value} \\
+\midrule
+30  & -4.3000 \\
+43  &  3.2000 \\
+55  &  3.2000 \\
+107 & -4.3000 \\
+109 &  3.2000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{$\ell_1$-minimization objective}
+
+The sparse recovery problem is posed as
+\begin{equation}
+\label{eq:l1-problem}
+\min_x \norm{x}_1
+\quad\text{subject to}\quad
+A_0x=b.
+\end{equation}
+
+The $\ell_1$ norm is
+\[
+\norm{x}_1=\sum_{i=1}^{128}|x_i|.
+\]
+Unlike the equality constraint, this objective prefers solutions with smaller total absolute magnitude and is commonly used as a convex surrogate for sparsity.
+
+\subsection{Conversion to a linear program}
+
+The vector $x$ can contain both positive and negative entries. Introduce nonnegative vectors $x^+$ and $x^-$ such that
+\begin{equation}
+\label{eq:split}
+x=x^+-x^-,
+\qquad
+x^+,x^-\ge 0.
+\end{equation}
+
+Define the 256-dimensional nonnegative variable
+\[
+z=
+\begin{bmatrix}
+x^+\\
+x^-
+\end{bmatrix}
+\in\R^{256}
+\]
+and the enlarged matrix
+\[
+A=
+\begin{bmatrix}
+A_0 & -A_0
+\end{bmatrix}
+\in\R^{52\times 256}.
+\]
+Then
+\[
+Az=A_0x^+-A_0x^-=A_0x=b.
+\]
+With $c=\mathbf{1}\in\R^{256}$, the objective becomes
+\[
+c^Tz=\mathbf{1}^Tx^+ + \mathbf{1}^Tx^-,
+\]
+which represents the $\ell_1$ objective under the positive-negative decomposition. The linear program is therefore
+\begin{equation}
+\label{eq:lp}
+\min_z c^Tz
+\quad\text{subject to}\quad
+Az=b,
+\qquad z\ge 0.
+\end{equation}
+
+% -------------------------------------------------
+\section{Interior Point Method}
+% -------------------------------------------------
+\subsection{Algorithm parameters}
+
+The implementation follows the specified Interior Point iteration with the parameters in Table~\ref{tab:params}.
+
+\begin{table}[H]
+\centering
+\caption{Interior Point Method parameters.}
+\label{tab:params}
+\begin{tabular}{lll}
+\toprule
+\textbf{Parameter} & \textbf{Meaning} & \textbf{Value} \\
+\midrule
+$\mu_0$ & Initial barrier parameter & 10 \\
+$\rho$ & Barrier reduction factor & 0.6 \\
+$\epsilon$ & Diagonal adjustment & 0.001 \\
+$\alpha$ & Newton step size & 1 \\
+--- & Maximum outer iterations & 20 \\
+--- & Maximum inner iterations & 100 \\
+--- & Inner stopping tolerance & $10^{-9}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At the beginning of each outer iteration after the first,
+\begin{equation}
+\label{eq:mu-update}
+\mu\leftarrow\rho\mu.
+\end{equation}
+This gradually changes the barrier parameter over the sequence of outer iterations.
+
+\subsection{Adjusted diagonal matrix}
+
+For the current estimate $z$, define
+\begin{equation}
+\label{eq:X}
+X=\diag(z)+\epsilon I.
+\end{equation}
+The small diagonal adjustment $\epsilon I$ is included in the specified method because the matrix system involving $AX^2A^T$ can be singular or numerically problematic. In this implementation, $\epsilon=0.001$.
+
+\subsection{Multiplier system}
+
+The multiplier vector $\lambda$ is found by solving
+\begin{equation}
+\label{eq:lambda}
+(AX^2A^T)\lambda
+=
+AX^2c-\mu AXe,
+\end{equation}
+where $e$ is the vector of ones.
+
+The MATLAB implementation uses the backslash operator:
+\begin{lstlisting}[caption={Linear solve for the multiplier vector.}]
+lambda = lhs \ rhs;
+\end{lstlisting}
+This solves the linear system directly without explicitly forming a matrix inverse.
+
+\subsection{Newton direction and update}
+
+The Newton direction is
+\begin{equation}
+\label{eq:p}
+p
+=
+Xe+
+\frac{1}{\mu}X^2(A^T\lambda-c).
+\end{equation}
+The estimate is updated as
+\begin{equation}
+\label{eq:update}
+z\leftarrow z+\alpha p.
+\end{equation}
+The project uses $\alpha=1$, corresponding to a pure Newton step.
+
+The inner iteration stops when
+\begin{equation}
+\label{eq:stop}
+\norm{p}_2<10^{-9}.
+\end{equation}
+Otherwise, the method continues until the maximum of 100 inner iterations is reached.
+
+% -------------------------------------------------
+\section{MATLAB Implementation}
+% -------------------------------------------------
+\subsection{Software organization}
+
+The portfolio version separates the experiment into four main components:
+\begin{itemize}[leftmargin=1.5em]
+  \item \texttt{run\_demo.m}: coordinates the experiment and exports results;
+  \item \texttt{build\_sparse\_recovery\_problem.m}: constructs the deterministic matrix, sparse vector, measurements, and initial point;
+  \item \texttt{interior\_point\_solver.m}: implements the custom optimization iteration; and
+  \item \texttt{recovery\_metrics.m}: computes numerical and support-recovery metrics.
+\end{itemize}
+
+This decomposition separates problem construction, optimization, evaluation, and experiment execution. It also makes the solver easier to inspect independently from the data setup.
+
+\subsection{Deterministic measurement matrix}
+
+The measurement matrix is derived from a recursively constructed $128\times128$ structured sign matrix. A fixed set of 52 rows is selected to form $A_0$. Because the construction is deterministic, repeated runs use the same recovery problem.
+
+The true sparse vector is initialized by
+\begin{lstlisting}[caption={Ground-truth sparse vector construction.}]
+x_true = zeros(128, 1);
+locations = [109, 107, 55, 30, 43];
+values = [3.2, -4.3, 3.2, -4.3, 3.2];
+x_true(locations) = values;
+
+b = A0 * x_true;
+\end{lstlisting}
+
+\subsection{Initial feasible estimate}
+
+A signed initial estimate is computed using
+\[
+x_{\text{initial}}
+=
+A_0^T(A_0A_0^T)^{-1}b.
+\]
+In the refactored implementation, the inverse is not formed explicitly. Instead, MATLAB solves
+\[
+(A_0A_0^T)y=b
+\]
+and then sets
+\[
+x_{\text{initial}}=A_0^Ty.
+\]
+The corresponding code is
+\begin{lstlisting}[caption={Initialization using a linear solve.}]
+gram_matrix = A0 * A0';
+y = gram_matrix \ b;
+x_initial = A0' * y;
+\end{lstlisting}
+
+This is preferable to materializing \texttt{inv(gram\_matrix)} when the actual task is to solve a linear system.
+
+\subsection{Conversion to nonnegative variables}
+
+The signed initial estimate is converted to the nonnegative variable $z_0$ by
+\begin{lstlisting}[caption={Positive-negative decomposition of the initial estimate.}]
+x_plus = max(x_initial, 0);
+x_minus = max(-x_initial, 0);
+z0 = [x_plus; x_minus];
+\end{lstlisting}
+The enlarged LP matrix and objective are
+\begin{lstlisting}[caption={Linear-program construction.}]
+A = [A0, -A0];
+c = ones(size(A, 2), 1);
+\end{lstlisting}
+
+\subsection{Core solver loop}
+
+The main iteration constructs $X$, forms the multiplier system, solves for $\lambda$, computes the Newton direction, updates the estimate, and checks convergence.
+
+\begin{lstlisting}[caption={Core Interior Point iteration.}]
+for outer = 1:options.max_outer_iterations
+    if outer > 1
+        mu = mu * options.rho;
+    end
+
+    for inner = 1:options.max_inner_iterations
+        X = diag(z) + options.epsilon * I;
+        X2 = X * X;
+
+        lhs = A * X2 * A';
+        rhs = A * X2 * c - mu * A * X * e;
+        lambda = lhs \ rhs;
+
+        p = X * e + (1 / mu) * X2 * (A' * lambda - c);
+        z = z + options.alpha * p;
+
+        if norm(p, 2) < options.tolerance
+            break;
+        end
+    end
+end
+\end{lstlisting}
+
+Importantly, the solver does not call MATLAB's \texttt{linprog}. The numerical method itself is implemented directly.
+
+% -------------------------------------------------
+\section{Experimental Setup}
+% -------------------------------------------------
+\subsection{Dimensions and sparsity}
+
+The experiment uses:
+\begin{itemize}[leftmargin=1.5em]
+  \item signal dimension: 128;
+  \item number of measurements: 52;
+  \item number of nonzero entries: 5;
+  \item LP decision variables after splitting: 256.
+\end{itemize}
+
+The measurement vector is generated exactly from the true vector:
+\[
+b=A_0x_{\text{true}}.
+\]
+Thus, the experiment evaluates recovery in a noiseless measurement setting.
+
+\subsection{Thresholding and signed reconstruction}
+
+After optimization, entries of the 256-dimensional LP variable whose magnitude is below 0.01 are set to zero. The signed vector is then reconstructed as
+\begin{equation}
+\label{eq:recover}
+x_{\text{recovered}}
+=
+z_{1:128}-z_{129:256}.
+\end{equation}
+
+The thresholding choice is preserved from the project method and is documented explicitly because it affects support recovery and reported error metrics.
+
+\subsection{Evaluation metrics}
+
+Let
+\[
+r=x_{\text{recovered}}-x_{\text{true}}.
+\]
+The report uses the following metrics:
+
+\paragraph{$\ell_2$ recovery error}
+\begin{equation}
+E_2=\norm{r}_2.
+\end{equation}
+
+\paragraph{Relative $\ell_2$ error}
+\begin{equation}
+E_{\text{rel}}
+=
+\frac{\norm{r}_2}{\norm{x_{\text{true}}}_2}.
+\end{equation}
+
+\paragraph{Maximum absolute error}
+\begin{equation}
+E_{\infty}
+=
+\max_i |r_i|.
+\end{equation}
+
+\paragraph{Support recovery}
+The support of a vector is the set of indices corresponding to nonzero entries. Correct support recovery counts how many true nonzero indices are also present in the recovered support.
+
+% -------------------------------------------------
+\section{Results}
+% -------------------------------------------------
+\subsection{Overall recovery quality}
+
+The reported run recovered the correct five nonzero locations. Table~\ref{tab:metrics} summarizes the main results.
+
+\begin{table}[H]
+\centering
+\caption{Reported sparse-recovery results.}
+\label{tab:metrics}
+\begin{tabular}{lr}
+\toprule
+\textbf{Metric} & \textbf{Result} \\
+\midrule
+Signal dimension & 128 \\
+Measurements & 52 \\
+True nonzero entries & 5 \\
+Correct support entries & \textbf{5 / 5} \\
+$\ell_2$ recovery error & \textbf{0.004598} \\
+Relative $\ell_2$ error & \textbf{0.055880\%} \\
+Maximum absolute error & \textbf{0.002500} \\
+Outer iterations & 20 \\
+Sample runtime & 0.257777 s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The runtime is taken from the original MATLAB run and is machine-dependent. The error metrics are computed from the thresholded recovered vector shown in that run.
+
+\subsection{Recovered nonzero values}
+
+Table~\ref{tab:recovered} compares the true and recovered values at the five nonzero indices.
+
+\begin{table}[H]
+\centering
+\caption{Recovered nonzero entries.}
+\label{tab:recovered}
+\begin{tabular}{rrrr}
+\toprule
+\textbf{Index} & \textbf{True value} & \textbf{Recovered value} & \textbf{Absolute error} \\
+\midrule
+30  & -4.3000 & -4.2975 & 0.0025 \\
+43  &  3.2000 &  3.1982 & 0.0018 \\
+55  &  3.2000 &  3.1979 & 0.0021 \\
+107 & -4.3000 & -4.2982 & 0.0018 \\
+109 &  3.2000 &  3.1980 & 0.0020 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+All five support locations are recovered. The largest absolute discrepancy among these entries is 0.0025.
+
+\subsection{Visual comparison}
+
+Figure~\ref{fig:comparison} compares the true and recovered sparse vectors over all 128 indices. Because the estimates are close, the recovered markers nearly overlap the true nonzero entries.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.94\textwidth]{figures/recovery_comparison.png}
+\caption{Comparison of the true and recovered sparse vectors.}
+\label{fig:comparison}
+\end{figure}
+
+Figure~\ref{fig:error} shows the absolute errors at the recovered nonzero locations.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.80\textwidth]{figures/absolute_error.png}
+\caption{Absolute error at the five nonzero indices.}
+\label{fig:error}
+\end{figure}
+
+% -------------------------------------------------
+\section{Numerical and Software Engineering Considerations}
+% -------------------------------------------------
+\subsection{Linear solves instead of explicit inverses}
+
+A key numerical improvement in the refactored implementation is the use of MATLAB's backslash operator. The code solves systems such as
+\[
+(A_0A_0^T)y=b
+\]
+rather than explicitly computing $(A_0A_0^T)^{-1}$. This is clearer and better aligned with standard numerical linear algebra practice.
+
+\subsection{Regularization of the diagonal matrix}
+
+The update uses
+\[
+X=\diag(z)+\epsilon I.
+\]
+The adjustment prevents the diagonal matrix from directly inheriting zero entries from the current iterate. The project specification notes that the matrix $AX^2A^T$ is often singular, motivating the use of the $\epsilon I$ adjustment.
+
+\subsection{Separation of support and value accuracy}
+
+A sparse-recovery method can identify the correct nonzero locations but still estimate their values poorly. Conversely, it can approximate several values well while missing part of the true support. Reporting both support recovery and numerical error therefore provides a more informative evaluation than either measure alone.
+
+\subsection{Deterministic reproducibility}
+
+The matrix construction, selected rows, support locations, support values, and algorithm parameters are fixed. This makes the experiment reproducible apart from machine-dependent runtime and potential environment-level floating-point differences.
+
+\subsection{Direct algorithm implementation}
+
+The custom solver does not call a black-box LP routine. This is important for the educational and technical purpose of the project: the implementation exposes the matrix system, multiplier solve, Newton direction, barrier schedule, and stopping criterion directly.
+
+% -------------------------------------------------
+\section{Limitations and Future Work}
+% -------------------------------------------------
+The project produces strong results on the specified deterministic problem instance, but several limitations remain.
+
+\subsection{Fixed problem instance}
+
+The reported experiment uses one deterministic 5-sparse vector and one deterministic measurement matrix. A broader evaluation would vary:
+\begin{itemize}[leftmargin=1.5em]
+  \item sparse support locations;
+  \item nonzero amplitudes;
+  \item number of measurements;
+  \item sparsity level; and
+  \item measurement-matrix construction.
+\end{itemize}
+
+\subsection{Noisy measurements}
+
+The current experiment uses exact measurements $b=A_0x_{\text{true}}$. Real data may include noise. A natural extension would replace the hard equality constraint with a noise-aware formulation, such as allowing a bounded residual.
+
+\subsection{Fixed algorithm parameters}
+
+The method uses fixed values $\mu_0=10$, $\rho=0.6$, and $\epsilon=0.001$. The course specification explicitly identifies dynamic adjustment of these quantities as beyond the original scope. Future work could study how parameter schedules affect convergence speed, stability, and recovery accuracy.
+
+\subsection{Pure Newton step}
+
+The implementation uses $\alpha=1$. A more general solver could use line search or fraction-to-the-boundary rules to control step length and improve robustness across broader problem classes.
+
+\subsection{Benchmarking}
+
+Another extension would compare the custom solver with MATLAB's \texttt{linprog} or other optimization methods. Such a comparison should distinguish between educational algorithm implementation and production-grade optimization performance.
+
+% -------------------------------------------------
+\section{Conclusion}
+% -------------------------------------------------
+This project demonstrates how sparse recovery can be formulated as a linear program and solved using a custom Interior Point Method. Starting from an underdetermined system with 52 measurements and 128 unknowns, the signed vector is decomposed into nonnegative components, producing a 256-variable linear program. The MATLAB implementation directly carries out the barrier update, adjusted diagonal construction, multiplier-system solve, Newton direction computation, and convergence check.
+
+The reported result recovered all five nonzero locations of the true sparse vector and achieved a relative $\ell_2$ error of approximately $0.055880\%$. These results show that the implemented method successfully solved the specified recovery problem with high numerical accuracy.
+
+Beyond the numerical result, the project illustrates several broader skills: translating mathematical pseudocode into working software, reasoning about matrix dimensions and linear systems, avoiding unnecessary explicit inverses, measuring numerical error, and organizing a scientific-computing codebase into reproducible components. The project therefore sits at the intersection of applied mathematics, numerical optimization, and software engineering.
+
+% -------------------------------------------------
+\section{Project Background and Provenance}
+% -------------------------------------------------
+This report is based on a MAT 387/487 university numerical optimization project. The course materials provided the project problem, deterministic setup conventions, algorithm specification, parameter values, and MATLAB scaffold surrounding the student implementation section. The Interior Point iteration was implemented for the project and later reorganized into modular MATLAB components with additional metrics, visualizations, and technical documentation.
+
+The course project itself was based on Robert Robere's 2012 report on Interior Point Methods and Linear Programming~\cite{robere2012}. The purpose of this provenance statement is to distinguish the supplied problem context and scaffold from the implementation, refactoring, evaluation, and documentation represented in the portfolio version.
+
+% -------------------------------------------------
+\begin{thebibliography}{9}
+\bibitem{robere2012}
+Robert Robere.
+\newblock \emph{Interior Point Methods and Linear Programming}.
+\newblock University of Toronto, December 13, 2012.
+
+\bibitem{boyd2004}
+Stephen Boyd and Lieven Vandenberghe.
+\newblock \emph{Convex Optimization}.
+\newblock Cambridge University Press, 2004.
+\end{thebibliography}
+
+% -------------------------------------------------
+\appendix
+\section{Algorithm Summary}
+% -------------------------------------------------
+Given $c$, $A$, $b$, and an initial estimate $z_0$:
+\begin{enumerate}[leftmargin=1.7em]
+  \item Initialize $\mu=10$, $\rho=0.6$, $\epsilon=0.001$, and $z=z_0$.
+  \item For 20 outer iterations:
+  \begin{enumerate}[leftmargin=1.7em]
+    \item If this is not the first outer iteration, set $\mu\leftarrow\rho\mu$.
+    \item For at most 100 inner iterations:
+    \begin{enumerate}[leftmargin=1.7em]
+      \item Set $X=\diag(z)+\epsilon I$.
+      \item Solve $(AX^2A^T)\lambda=AX^2c-\mu AXe$.
+      \item Compute $p=Xe+\frac{1}{\mu}X^2(A^T\lambda-c)$.
+      \item Update $z\leftarrow z+p$.
+      \item If $\norm{p}_2<10^{-9}$, exit the inner loop.
+    \end{enumerate}
+  \end{enumerate}
+  \item Threshold small LP-variable entries and reconstruct the signed vector from the two halves of $z$.
+\end{enumerate}
+
+% -------------------------------------------------
+\section{Selected MATLAB Source}
+% -------------------------------------------------
+The following listing contains the main solver implementation used in the portfolio version.
+
+\lstinputlisting[caption={Selected source: \texttt{interior\_point\_solver.m}}]{code/interior_point_solver.m}
+
+\end{document}
