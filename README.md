@@ -6,7 +6,7 @@
 
 A MATLAB implementation of an **Interior Point Method** for recovering a sparse vector from an underdetermined linear system using **L1-norm minimization**.
 
-The project reformulates sparse recovery as a linear programming problem, solves it with a custom Newton-style Interior Point iteration, and evaluates the recovered solution using support and numerical error metrics.
+The project reformulates sparse recovery as a linear programming problem, solves it with a custom Newton-style Interior Point iteration, and evaluates the recovered solution using support-recovery and numerical-error metrics.
 
 <p align="center">
   <img src="results/recovery_comparison.png" alt="Comparison of the true and recovered sparse vectors" width="850">
@@ -16,7 +16,7 @@ The project reformulates sparse recovery as a linear programming problem, solves
 
 ## Overview
 
-Suppose a sparse vector \(x \in \mathbb{R}^{128}\) cannot be observed directly. Instead, only 52 linear measurements are available:
+Suppose a sparse vector $x \in \mathbb{R}^{128}$ cannot be observed directly. Instead, only 52 linear measurements are available:
 
 $$
 b = A_0x
@@ -30,7 +30,7 @@ $$
 
 The goal is to recover the original **5-sparse vector** from these measurements.
 
-This is formulated as the constrained optimization problem
+The recovery problem is formulated as
 
 $$
 \min_x \|x\|_1
@@ -38,7 +38,7 @@ $$
 A_0x = b.
 $$
 
-Because \(x\) may contain both positive and negative entries, it is decomposed as
+Because $x$ may contain both positive and negative values, decompose it as
 
 $$
 x = x^+ - x^-,
@@ -65,7 +65,7 @@ A_0 & -A_0
 \end{bmatrix}.
 $$
 
-The problem can then be expressed as the linear program
+The problem can then be written as the linear program
 
 $$
 \min_z \mathbf{1}^T z
@@ -93,7 +93,9 @@ The reported run successfully recovered all five nonzero locations and closely a
 | Outer iterations | 20 |
 | Sample runtime | 0.257777 s |
 
-> **Note:** Runtime is taken from the original MATLAB run and is machine-dependent. Error metrics are computed from the thresholded recovered vector reported by that run.
+> **Note**
+>
+> Runtime is taken from the original MATLAB run and is machine-dependent. Error metrics are computed from the thresholded recovered vector reported by that run.
 
 ### Recovered nonzero entries
 
@@ -145,7 +147,7 @@ $$
 \epsilon = 0.001.
 $$
 
-The diagonal adjustment provides a numerical safeguard when forming the linear system used by the method.
+The diagonal adjustment acts as a numerical safeguard when forming the matrix system used by the method.
 
 ### 3. Solve for the multiplier vector
 
@@ -230,7 +232,7 @@ interior-point-sparse-recovery/
 
 ## Implementation
 
-The repository separates the numerical method into independent components.
+The repository separates problem construction, optimization, evaluation, and experiment execution into independent components.
 
 ### `run_demo.m`
 
@@ -247,9 +249,9 @@ Main entry point for the experiment. It:
 
 Builds the deterministic problem instance, including:
 
-- the \(52 \times 128\) measurement matrix,
+- the $52 \times 128$ measurement matrix,
 - the 5-sparse ground-truth vector,
-- the measurement vector \(b\),
+- the measurement vector $b$,
 - the expanded LP matrix,
 - a feasible initial estimate.
 
@@ -257,10 +259,10 @@ Builds the deterministic problem instance, including:
 
 Implements the custom Interior Point iteration, including:
 
-- barrier parameter reduction,
+- barrier-parameter reduction,
 - matrix construction,
 - multiplier-system solution,
-- Newton direction computation,
+- Newton-direction computation,
 - iterative updates,
 - convergence checks,
 - iteration diagnostics.
@@ -336,13 +338,13 @@ y = gram_matrix \ b;
 x_initial = A0' * y;
 ```
 
-rather than explicitly computing
+rather than explicitly computing:
 
 ```matlab
 inv(gram_matrix)
 ```
 
-when the actual objective is to solve a linear system.
+when the actual goal is to solve a linear system.
 
 ### Custom optimization routine
 
@@ -350,11 +352,11 @@ The core algorithm directly implements the Interior Point iteration instead of d
 
 ### Reproducible problem instance
 
-The measurement matrix construction, sparse-vector locations, and sparse-vector values are deterministic.
+The measurement-matrix construction, sparse-vector locations, and sparse-vector values are deterministic.
 
 ### Explicit numerical evaluation
 
-Support recovery and value accuracy are measured separately rather than relying only on visual inspection of the output.
+Support recovery and value accuracy are measured separately rather than relying only on visual inspection.
 
 ### Numerical regularization
 
@@ -364,7 +366,7 @@ $$
 X = \operatorname{diag}(z) + \epsilon I
 $$
 
-with \(\epsilon = 0.001\), following the specified method and reducing numerical degeneracy in the associated matrix system.
+with $\epsilon = 0.001$, following the specified method and reducing numerical degeneracy in the associated matrix system.
 
 ---
 
@@ -406,8 +408,7 @@ For additional details, see:
 
 ## Author
 
-**Carlota Arzúa Alonso**
-
+**Carlota Arzúa Alonso**  
 Mathematics and Computer Science  
 DePaul University
 
