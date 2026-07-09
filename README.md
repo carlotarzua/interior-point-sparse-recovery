@@ -18,60 +18,60 @@ The project reformulates sparse recovery as a linear programming problem, solves
 
 Suppose a sparse vector $x \in \mathbb{R}^{128}$ cannot be observed directly. Instead, only 52 linear measurements are available:
 
-$$
+```math
 b = A_0x
-$$
+```
 
 where
 
-$$
+```math
 A_0 \in \mathbb{R}^{52 \times 128}.
-$$
+```
 
 The goal is to recover the original **5-sparse vector** from these measurements.
 
 The recovery problem is formulated as
 
-$$
+```math
 \min_x \|x\|_1
 \quad \text{subject to} \quad
 A_0x = b.
-$$
+```
 
 Because $x$ may contain both positive and negative values, decompose it as
 
-$$
+```math
 x = x^+ - x^-,
 \qquad
 x^+, x^- \ge 0.
-$$
+```
 
 Define
 
-$$
+```math
 z =
 \begin{bmatrix}
 x^+ \\
 x^-
 \end{bmatrix}
-$$
+```
 
 and
 
-$$
+```math
 A =
 \begin{bmatrix}
 A_0 & -A_0
 \end{bmatrix}.
-$$
+```
 
 The problem can then be written as the linear program
 
-$$
+```math
 \min_z \mathbf{1}^T z
 \quad \text{subject to} \quad
 Az = b.
-$$
+```
 
 The optimization is solved with a custom Interior Point iteration. The core solver does **not** call MATLAB's `linprog`.
 
@@ -121,31 +121,31 @@ The solver uses an outer barrier loop and an inner Newton iteration.
 
 After the first outer iteration,
 
-$$
+```math
 \mu \leftarrow \rho\mu.
-$$
+```
 
 The implementation uses
 
-$$
+```math
 \mu_0 = 10,
 \qquad
 \rho = 0.6.
-$$
+```
 
 ### 2. Construct the adjusted diagonal matrix
 
 At each Newton iteration,
 
-$$
-X = \operatorname{diag}(z) + \epsilon I
-$$
+```math
+X = \mathrm{diag}(z) + \epsilon I
+```
 
 with
 
-$$
+```math
 \epsilon = 0.001.
-$$
+```
 
 The diagonal adjustment acts as a numerical safeguard when forming the matrix system used by the method.
 
@@ -153,11 +153,11 @@ The diagonal adjustment acts as a numerical safeguard when forming the matrix sy
 
 The method solves
 
-$$
+```math
 (AX^2A^T)\lambda
 =
 AX^2c - \mu AXe.
-$$
+```
 
 In MATLAB, the linear system is solved with the backslash operator rather than by explicitly computing a matrix inverse.
 
@@ -165,26 +165,26 @@ In MATLAB, the linear system is solved with the backslash operator rather than b
 
 The update direction is
 
-$$
+```math
 p =
 Xe +
 \frac{1}{\mu}
 X^2(A^T\lambda - c).
-$$
+```
 
 ### 5. Update the estimate
 
 Using a step size of
 
-$$
+```math
 \alpha = 1,
-$$
+```
 
 the estimate is updated by
 
-$$
+```math
 z \leftarrow z + p.
-$$
+```
 
 This corresponds to a pure Newton iteration.
 
@@ -192,9 +192,9 @@ This corresponds to a pure Newton iteration.
 
 The inner loop stops when
 
-$$
+```math
 \|p\|_2 < 10^{-9}.
-$$
+```
 
 For a more detailed explanation, see [`docs/algorithm.md`](docs/algorithm.md).
 
@@ -362,9 +362,9 @@ Support recovery and value accuracy are measured separately rather than relying 
 
 The solver uses
 
-$$
-X = \operatorname{diag}(z) + \epsilon I
-$$
+```math
+X = \mathrm{diag}(z) + \epsilon I
+```
 
 with $\epsilon = 0.001$, following the specified method and reducing numerical degeneracy in the associated matrix system.
 
